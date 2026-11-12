@@ -266,3 +266,4 @@ void calcular_fo(Solucao &s){
         s.fo += MAX(0, vetorCargaFac[fac] - vet_capacidade[fac]) * BETA;
     }
 }
+
