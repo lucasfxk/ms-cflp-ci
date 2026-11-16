@@ -11,19 +11,189 @@
 
 #define BETA 1000
 
-const char arq[] = "../Instancias/cflp-ci_toy.txt";
+//const char arq[] = "../Instancias/cflp-ci_toy.txt";
+const char arq[] = "../Instancias/wlp01.txt";
 
 int main(){
-    //srand(time(NULL));
+    srand(time(NULL));
     ler_dados();
     //testar_dados("");
 
-    Solucao s;
+    Solucao s,temp;
+    int tamanho = num_cli * 25 / 100;
+    construtivaGulosa(s);
+    printf("FO: %i\n",s.fo);
+    //imprimirSolucao(s);
 
-    construtivaAleatoriaGulosa(s);
+    while(true){
+        memcpy(&temp, &s, sizeof(Solucao));
+        while(true){
+            gerarVizinhoMineReduced(temp, tamanho);
 
-    imprimirSolucao(s);
+            if(temp.fo < s.fo){
+                printf("FO: %i\n", temp.fo);
+                memcpy(&s, &temp, sizeof(Solucao));
+                break;
+            }
+        }
+    }    
+    
+    printf("FO: %i\n", s.fo);
+    //imprimirSolucao(s);
     return 0;
+}
+
+void gerarVizinhoMineReduced(Solucao& s, int& tamanho){ 
+    Solucao temp;
+    memcpy(&temp, &s, sizeof(Solucao));
+
+    int vetorIndex[tamanho], vetorIndexGlobal[num_cli];
+    int cliente, facilidade, fac1, fac2;
+    int index,indexFac;
+    int vetorFac[num_fac],vetorBinarioFac[num_fac];
+    int auxVetorFac=0;
+    
+    //Fase de Seleção de Clientes
+    for(int x=0; x < num_cli; x++) vetorIndexGlobal[x] = x;
+    for(int idx=0; idx < tamanho; idx++){
+        index = rand() % (num_cli - idx) + idx;
+        cliente = vetorIndexGlobal[index];
+        vetorIndexGlobal[index] = vetorIndexGlobal[idx];
+        vetorIndexGlobal[idx] = cliente;
+
+        vetorIndex[idx] = cliente;
+    }
+
+    // Fase de Desconexão
+    memset(&vetorBinarioFac, 0, sizeof(vetorBinarioFac));
+    for(int cli=0; cli < tamanho; cli++){
+        cliente = vetorIndex[cli];
+        fac1 = temp.matriz[cliente][0];
+        fac2 = temp.matriz[cliente][1];
+
+
+        if(fac2 != -1){
+            temp.vetorConsumoFac[fac2] -= temp.matriz[cliente][3]; //Retira carga da facilidade
+            temp.fo -= mat_custo[cliente][fac2] * temp.matriz[cliente][3]; //retira o valor da FO
+            temp.matriz[cliente][1] = -1; //Retira facilidade de cliente
+            temp.matriz[cliente][3] = 0; //Retira carga da facilidade de cliente
+
+            if(!vetorBinarioFac[fac2]){ //Caso não contenha
+                vetorFac[auxVetorFac] = fac2;
+                auxVetorFac++;
+                vetorBinarioFac[fac2] = 1;
+            }
+        }
+
+        if(fac1 != -1){ //Talvez não precise, considerar remoção
+            temp.vetorConsumoFac[fac1] -= temp.matriz[cliente][2]; //Retira carga da facilidade
+            temp.fo -= mat_custo[cliente][fac1] * temp.matriz[cliente][2]; //retira o valor da FO
+            temp.matriz[cliente][0] = -1; //Retira facilidade de cliente
+            temp.matriz[cliente][2] = 0; //Retira carga da facilidade de cliente
+
+            if(!vetorBinarioFac[fac1]){ //Caso não contenha
+                vetorFac[auxVetorFac] = fac1;
+                auxVetorFac++;
+                vetorBinarioFac[fac1] = 1;
+            }
+        }
+    }
+    for(int x=0; x < auxVetorFac; x++){
+        if(temp.vetorConsumoFac[vetorFac[x]] == 0){
+            temp.fo -= vet_custo_fixo[vetorFac[x]];
+        }
+    }
+
+    // Fase de Reconexão
+    bool achou = false;
+    bool compativel=false;
+    int quantidade;
+    int custo, melhorCusto, melhorFac, facAleatoria;
+    int cargaTotal=0, cargaAtual=0;
+    int vetorIndexFac[num_fac];
+    for(int x=0; x<num_fac; x++) vetorIndexFac[x] = x;
+    for(int x=0; x<num_cli;x++)cargaTotal += vet_demanda[x];
+    for(int x=0; x<num_fac; x++)cargaAtual += temp.vetorConsumoFac[x];
+
+    while(cargaAtual < cargaTotal){
+
+        for(int i=0; i < tamanho; i++){
+            index = rand() % (tamanho - i) + i;
+            cliente = vetorIndex[index];
+            vetorIndex[index] = vetorIndex[i];
+            vetorIndex[i] = cliente;
+
+            if(vet_demanda[cliente] - (temp.matriz[cliente][2] + temp.matriz[cliente][3]) <= 0) continue;
+    
+            achou = false;
+            melhorCusto = INT_MAX;
+            for(int j=0; j < auxVetorFac; j++){
+                indexFac = rand() % (auxVetorFac - j) + j;
+                facilidade = vetorFac[indexFac];
+                vetorFac[indexFac] = vetorFac[j];
+                vetorFac[j] = facilidade;
+    
+                if(vet_capacidade[facilidade] - temp.vetorConsumoFac[facilidade] <= 0
+                || (temp.matriz[cliente][0] != -1 && vet_demanda[cliente] - temp.matriz[cliente][2] > vet_capacidade[facilidade] - temp.vetorConsumoFac[facilidade])
+                || temp.matriz[cliente][0] == facilidade) continue;
+
+                eCompativel(temp, cliente, facilidade, compativel);
+                if(!compativel) continue;
+
+                custo = mat_custo[cliente][facilidade];
+
+                if(custo < melhorCusto){
+                    melhorCusto = custo;
+                    melhorFac = facilidade;
+
+                    achou = true;
+                }
+            }
+
+            if(achou){
+                quantidade = MIN(
+                                    vet_demanda[cliente] - (temp.matriz[cliente][2] + temp.matriz[cliente][3]),
+                                    vet_capacidade[melhorFac] - temp.vetorConsumoFac[melhorFac]
+                                );
+                
+                inserirAbastecimento(temp,cliente,melhorFac,quantidade);
+                cargaAtual += quantidade;
+            }else{
+                for(int j=0; j < num_fac; j++){
+                    indexFac = rand() % (num_fac - j) + j;
+                    facilidade = vetorIndexFac[indexFac];
+                    vetorIndexFac[indexFac] = vetorIndexFac[j];
+                    vetorIndexFac[j] = facilidade;
+
+                    if(facilidade == temp.matriz[cliente][0]) continue;
+
+                    eCompativel(temp, cliente, facilidade, compativel);
+                    if(!compativel) continue;
+
+                    quantidade = vet_demanda[cliente] - (temp.matriz[cliente][2] + temp.matriz[cliente][3]);
+                    inserirAbastecimento(temp, cliente, facilidade, quantidade);
+
+                    temp.fo += BETA * MAX(0, temp.vetorConsumoFac[facilidade] - vet_capacidade[facilidade]);
+
+                    cargaAtual += quantidade;
+                    achou = true;
+                    break;
+                }
+                if(!achou){
+                    return;
+                }
+            }
+        }
+    }
+
+    // Facilidades Fechadas (remoção do custo de abertura)
+    for(int x=0; x < auxVetorFac; x++){
+        if(temp.vetorConsumoFac[vetorFac[x]] == 0){
+            temp.fo -= vet_custo_fixo[vetorFac[x]];
+        }
+    }
+
+    memcpy(&s, &temp, sizeof(Solucao));
 }
 
 void construtivaAleatoriaGulosa(Solucao& s){
@@ -55,7 +225,7 @@ void construtivaAleatoriaGulosa(Solucao& s){
             indexCli[idxCli] = indexCli[i];
             indexCli[i] = cli;
 
-            if(vet_demanda[cli] - (s.matriz[cli][2] + s.matriz[cli][3]) <= 0) continue; //
+            if(vet_demanda[cli] - (s.matriz[cli][2] + s.matriz[cli][3]) <= 0) continue;
 
             contMelhor = 0;
             achou = false;
@@ -112,7 +282,7 @@ void construtivaAleatoriaGulosa(Solucao& s){
                 do{
                     facAleatoria = rand() % num_fac;
                     eCompativel(s, cli, facAleatoria, compativel);
-                }while(!compativel && facAleatoria == s.matriz[cli][0]);
+                }while(!compativel || facAleatoria == s.matriz[cli][0]);
                 
                 quantidade = vet_demanda[cli] - (s.matriz[cli][2] + s.matriz[cli][3]);
                 inserirAbastecimento(s, cli, facAleatoria, quantidade);
@@ -197,7 +367,7 @@ void construtivaGulosa(Solucao& s){
             do{
                 facAleatoria = rand() % num_fac;
                 eCompativel(s, cli, facAleatoria, compativel);
-            }while(!compativel && facAleatoria == s.matriz[cli][0]);
+            }while(!compativel || facAleatoria == s.matriz[cli][0]);
             
             quantidade = vet_demanda[cli] - (s.matriz[cli][2] + s.matriz[cli][3]);
             inserirAbastecimento(s, cli, facAleatoria, quantidade);
@@ -438,27 +608,26 @@ void quicksortCentro(int* vetor,int* vetor2,int inicio, int fim){
 
 void calcular_fo(Solucao &s){
     s.fo = 0;
-    int vetorCargaFac[num_fac];
-    memset(&vetorCargaFac, 0, sizeof(vetorCargaFac));
+    memset(&s.vetorConsumoFac, 0, sizeof(s.vetorConsumoFac));
 
 
     //Somatório do custo por carga
     for(int cli=0; cli < num_cli; cli++){
         s.fo += s.matriz[cli][2] * mat_custo[cli][s.matriz[cli][0]]; //Suponho que sempre haverá pelo menos uma facilidade
-        vetorCargaFac[s.matriz[cli][0]] += s.matriz[cli][2];
+        s.vetorConsumoFac[s.matriz[cli][0]] += s.matriz[cli][2];
 
         if(s.matriz[cli][1] != -1){
             s.fo += s.matriz[cli][3] * mat_custo[cli][s.matriz[cli][1]];
-            vetorCargaFac[s.matriz[cli][1]] += s.matriz[cli][3];
+            s.vetorConsumoFac[s.matriz[cli][1]] += s.matriz[cli][3];
         }
     }
 
     //Somatório de custo fixo
     for(int fac=0; fac < num_fac; fac++){
-        s.fo += MIN(vetorCargaFac[fac], 1) * vet_custo_fixo[fac];
+        s.fo += MIN(s.vetorConsumoFac[fac], 1) * vet_custo_fixo[fac];
 
         //Penalidades
-        s.fo += MAX(0, vetorCargaFac[fac] - vet_capacidade[fac]) * BETA;
+        s.fo += MAX(0, s.vetorConsumoFac[fac] - vet_capacidade[fac]) * BETA;
     }
 }
 
@@ -493,6 +662,10 @@ void montarMatrizSolucao(Solucao& s){
 }
 
 void inserirAbastecimento(Solucao& s, int& cliente, int& facilidade, int& q){
+    if(s.vetorConsumoFac[facilidade] == 0){
+        s.fo += vet_custo_fixo[facilidade];
+    }
+
     if(s.matriz[cliente][0] == -1){
         s.matriz[cliente][0] = facilidade;
         s.matriz[cliente][2] = q;
@@ -515,6 +688,7 @@ void inserirAbastecimento(Solucao& s, int& cliente, int& facilidade, int& q){
     }
 
     s.vetorConsumoFac[facilidade] += q;
+    s.fo += mat_custo[cliente][facilidade] * q;
 
 }
 

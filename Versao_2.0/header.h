@@ -62,5 +62,9 @@ void inserirAbastecimento(Solucao& s, int& cliente, int& facilidade, int& q);
 void construtivaGulosa(Solucao& s);
 //---------------------------------
 
+// ----- FUNÇÕES DE GERAR VIZINHO -----
+void gerarVizinhoMineReduced(Solucao& s, int& tamanho);
+//-------------------------------------
+
 
 #endif // HEADER_H_INCLUDED
